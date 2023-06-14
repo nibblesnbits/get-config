@@ -1,0 +1,11 @@
+{
+  "ECHO_VALUE": {
+    "source": "cmd",
+    "exec": "pwsh.exe",
+    "args": ["-Command", "Write-Host 'Hello World'"]
+  },
+  "AWS_REGION": {
+    "source": "value",
+    "value": "us-east-1"
+  }
+}
