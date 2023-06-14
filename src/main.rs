@@ -8,6 +8,9 @@ use std::io::BufReader;
 #[command(version, about, long_about = None)]
 /// CLI tool for retrieving configuration values from any source
 struct Args {
+    /// List of keys to retrieve
+    key_list: String,
+
     /// Which source config file to use
     #[arg(short, long)]
     source: String,
@@ -42,28 +45,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         }
     };
     let mut map = HashMap::new();
-    for (key, config) in input.iter() {
-        match config.source {
-            Source::Cmd => {
-                let mut cmd = std::process::Command::new(config.exec.as_ref().unwrap());
-                cmd.args(config.args.as_ref().unwrap_or(&Vec::new()));
-                let output = cmd.output()?;
-                if !output.stderr.is_empty() {
-                    return Err(format!(
-                        "Error running command: {}",
-                        String::from_utf8_lossy(&output.stderr)
-                    )
-                    .into());
-                }
-                let value = String::from_utf8(output.stdout)?;
-                map.insert(key, value);
-            }
-            Source::Value => {
-                map.insert(
-                    key,
-                    config.value.as_ref().unwrap_or(&"".to_string()).to_string(),
-                );
-            }
+    for key in args.key_list.split(",") {
+        if let Some(config) = input.get(key) {
+            let value = get_config_value(config)?;
+            map.insert(key, value);
+        } else {
+            return Err(format!("Key '{}' not found in source config", key).into());
         }
     }
 
@@ -74,6 +61,28 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     };
     print!("{}", output);
     Ok(())
+}
+
+fn get_config_value(config: &ConfigValueSource) -> Result<String, Box<dyn std::error::Error>> {
+    match config.source {
+        Source::Cmd => {
+            let mut cmd = std::process::Command::new(config.exec.as_ref().unwrap());
+            cmd.args(config.args.as_ref().unwrap_or(&Vec::new()));
+            let output = cmd.output()?;
+            if !output.stderr.is_empty() {
+                return Err(format!(
+                    "Error running command: {}",
+                    String::from_utf8_lossy(&output.stderr)
+                )
+                .into());
+            }
+            let value = String::from_utf8(output.stdout)?;
+            return Ok(value);
+        }
+        Source::Value => {
+            return Ok(config.value.as_ref().unwrap_or(&"".to_string()).to_string());
+        }
+    }
 }
 
 fn parse_config(
@@ -90,12 +99,12 @@ fn parse_config(
     Ok(input)
 }
 
-fn output_json(map: &HashMap<&String, String>) -> Result<String, Box<dyn std::error::Error>> {
+fn output_json(map: &HashMap<&str, String>) -> Result<String, Box<dyn std::error::Error>> {
     let json = serde_json::to_string(&map)?;
     Ok(json)
 }
 
-fn output_dotenv(map: &HashMap<&String, String>) -> Result<String, Box<dyn std::error::Error>> {
+fn output_dotenv(map: &HashMap<&str, String>) -> Result<String, Box<dyn std::error::Error>> {
     let mut result = String::new();
     for (key, value) in map.iter() {
         result.push_str(&format!("{}={}\n", key, value));
